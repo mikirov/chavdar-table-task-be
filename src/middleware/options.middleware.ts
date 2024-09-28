@@ -6,7 +6,7 @@ import { Request, Response, NextFunction } from 'express';
 export class OptionsMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
     if (req.method === 'OPTIONS') {
-      res.status(204).send('');
+      res.status(204).send();
     } else {
       next();
     }
