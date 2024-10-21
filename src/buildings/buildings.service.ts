@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { User } from '../users/entities/user.entity';
@@ -10,7 +11,7 @@ import { User } from '../users/entities/user.entity';
 export class BuildingsService {
   constructor(private readonly dataSource: DataSource) {}
 
-  // Validate table names to prevent SQL injection
+  // Validate table names to prevent SQL injection and unauthorized access
   private validateTableName(user: User, tableName: string): string {
     const validTableNames = user.accessibleTables.map((name) =>
       name.toLowerCase(),
@@ -21,27 +22,60 @@ export class BuildingsService {
       throw new UnauthorizedException('Access to this table is denied');
     }
 
-    // Additional server-side validation can be added here, e.g., checking against a list of known table names
-    return lowerTableName;
+    // Escape the table name to prevent SQL injection
+    return '`' + lowerTableName.replace(/`/g, '``') + '`';
   }
 
-  // Fetch all records from a building table
+  // Fetch all records from any table
   async findAll(user: User, tableName: string): Promise<any[]> {
-    tableName = this.validateTableName(user, tableName);
-
-    // Use backticks to escape the table name
-    const query = `SELECT * FROM \`${tableName}\``;
+    const escapedTableName = this.validateTableName(user, tableName);
+    const query = `SELECT * FROM ${escapedTableName}`;
     return this.dataSource.query(query);
   }
 
-  // Update a record in a building table
+  // Create a new record in any table
+  async create(user: User, tableName: string, createData: any): Promise<any> {
+    const escapedTableName = this.validateTableName(user, tableName);
+
+    const columns = Object.keys(createData);
+    if (columns.length === 0) {
+      throw new BadRequestException('No data provided to create');
+    }
+
+    const placeholders = columns.map(() => '?').join(', ');
+    const values = columns.map((col) => createData[col]);
+    const escapedColumns = columns
+      .map((col) => '`' + col.replace(/`/g, '``') + '`')
+      .join(', ');
+
+    const query = `INSERT INTO ${escapedTableName} (${escapedColumns}) VALUES (${placeholders})`;
+
+    try {
+      const result = await this.dataSource.query(query, values);
+      console.log(result, 'wow');
+
+      const newId = result.insertId || result[0]?.insertId;
+      if (!newId) {
+        throw new Error('Failed to retrieve new ID after insert');
+      }
+
+      const selectQuery = `SELECT * FROM ${escapedTableName} WHERE id = ${newId}`;
+      const records = await this.dataSource.query(selectQuery, [newId]);
+      return records[0];
+    } catch (error) {
+      console.error('Error during create operation:', error);
+      throw new InternalServerErrorException('Error creating record');
+    }
+  }
+
+  // Update a record in any table
   async update(
     user: User,
     tableName: string,
     id: number,
     updateData: any,
   ): Promise<any> {
-    tableName = this.validateTableName(user, tableName);
+    const escapedTableName = this.validateTableName(user, tableName);
 
     if (!id) {
       throw new BadRequestException('ID is required');
@@ -52,52 +86,29 @@ export class BuildingsService {
       throw new BadRequestException('No data provided to update');
     }
 
-    const setClause = columns.map((col) => `\`${col}\` = ?`).join(', ');
+    const setClause = columns
+      .map((col) => `\`${col.replace(/`/g, '``')}\` = ?`)
+      .join(', ');
     const values = columns.map((col) => updateData[col]);
 
-    const query = `UPDATE \`${tableName}\` SET ${setClause} WHERE id = ?`;
+    const query = `UPDATE ${escapedTableName} SET ${setClause} WHERE id = ${id}`;
     await this.dataSource.query(query, [...values, id]);
 
     // Return the updated record
-    const selectQuery = `SELECT * FROM \`${tableName}\` WHERE id = ?`;
+    const selectQuery = `SELECT * FROM ${escapedTableName} WHERE id = ${id}`;
     const results = await this.dataSource.query(selectQuery, [id]);
     return results[0];
   }
 
-  // Create a new record in a building table
-  async create(user: User, tableName: string, createData: any): Promise<any> {
-    tableName = this.validateTableName(user, tableName);
-
-    const columns = Object.keys(createData);
-    if (columns.length === 0) {
-      throw new BadRequestException('No data provided to create');
-    }
-
-    const placeholders = columns.map(() => '?').join(', ');
-    const values = columns.map((col) => createData[col]);
-
-    const query = `INSERT INTO \`${tableName}\` (\`${columns.join(
-      '`, `',
-    )}\`) VALUES (${placeholders})`;
-    const result = await this.dataSource.query(query, values);
-
-    const newId = result.insertId;
-
-    // Return the newly created record
-    const selectQuery = `SELECT * FROM \`${tableName}\` WHERE id = ?`;
-    const records = await this.dataSource.query(selectQuery, [newId]);
-    return records[0];
-  }
-
-  // Delete a record
+  // Delete a record from any table
   async remove(user: User, tableName: string, id: number): Promise<void> {
-    tableName = this.validateTableName(user, tableName);
+    const escapedTableName = this.validateTableName(user, tableName);
 
     if (!id) {
       throw new BadRequestException('ID is required');
     }
 
-    const query = `DELETE FROM \`${tableName}\` WHERE id = ?`;
+    const query = `DELETE FROM ${escapedTableName} WHERE id = ${id}`;
     await this.dataSource.query(query, [id]);
   }
 }

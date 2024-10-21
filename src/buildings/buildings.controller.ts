@@ -14,7 +14,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { BuildingsService } from './buildings.service';
 import { UsersService } from '../users/users.service';
 
-@Controller('buildings')
+@Controller('tables')
 @UseGuards(JwtAuthGuard)
 export class BuildingsController {
   constructor(
@@ -22,12 +22,14 @@ export class BuildingsController {
     private readonly usersService: UsersService,
   ) {}
 
+  // Get all records from any table
   @Get(':tableName')
   async findAll(@Param('tableName') tableName: string, @Request() req) {
     const user = await this.getUserWithAccessibleTables(req.user.userId);
     return this.buildingsService.findAll(user, tableName);
   }
 
+  // Create a new record in any table
   @Post(':tableName')
   async create(
     @Param('tableName') tableName: string,
@@ -38,7 +40,8 @@ export class BuildingsController {
     return this.buildingsService.create(user, tableName, createData);
   }
 
-  @Post(':tableName/:id')
+  // Update a record in any table
+  @Put(':tableName/:id')
   async update(
     @Param('tableName') tableName: string,
     @Param('id') id: number,
@@ -49,6 +52,7 @@ export class BuildingsController {
     return this.buildingsService.update(user, tableName, id, updateData);
   }
 
+  // Delete a record from any table
   @Delete(':tableName/:id')
   async remove(
     @Param('tableName') tableName: string,
@@ -59,6 +63,7 @@ export class BuildingsController {
     return this.buildingsService.remove(user, tableName, id);
   }
 
+  // Helper method to fetch user and validate accessible tables
   private async getUserWithAccessibleTables(userId: number) {
     const user = await this.usersService.findById(userId);
     if (!user) {
